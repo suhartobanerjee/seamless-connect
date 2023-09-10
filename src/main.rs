@@ -1,6 +1,8 @@
+use std::io;
 use std::process;
 use local_ip_address::local_ip;
 use warp::{Filter, Reply};
+use tokio::sync::oneshot::channel;
 
 
 const SERVER_IP: [u8; 4] = [0; 4];
@@ -27,7 +29,7 @@ fn parse_args() -> Result<String, ()>  {
 
 
 #[tokio::main]
-async fn main() -> Result<(), &'static str>{
+async fn main() {
 
     
     let file_dir = parse_args().unwrap();
@@ -49,16 +51,39 @@ async fn main() -> Result<(), &'static str>{
     println!("\nPlease connect to http://{}:{}", my_ip, SERVER_PORT);
 
 
+    let (tx, rx)= channel::<String>();
 
-    let server = tokio::spawn(async move {
+
+    let (_, server) = warp::serve(send_file)
+        .bind_with_graceful_shutdown((SERVER_IP, SERVER_PORT), async {
+        match rx.await {
+            Ok(v) => {
+                println!("Stopping the server... {}", v);
+            },
+            Err(_) => {}
+        }
+    });
+
+
+    // Spawn the server into a runtime
+    tokio::task::spawn(server);
+
+    println!("\nPlease type q and <Enter> to quit the server...");
+    let mut end_signal = String::new();
+    io::stdin().read_line(&mut end_signal).expect("failed to readline");
+
+    // Later, start the shutdown...
+    let _ = tx.send(end_signal);
+
+    /*let server = tokio::spawn(async move {
         warp::serve(send_file)
         .run((SERVER_IP, SERVER_PORT))
         .await;
     });
 
 
-    server.await.unwrap();
+    server.await.unwrap();*/
 
 
-    return Ok(());
+    //return Ok(());
 }
